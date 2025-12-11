@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { restaurantApi } from "../api/restaurantApi";
+import AdminLayout from "../layouts/AdminLayout";
+import Modal from "../components/Modal";
+import { useToast } from "../context/ToastContext";
 
 export default function AdminRestaurants() {
     const [restaurants, setRestaurants] = useState([]);
@@ -16,7 +19,6 @@ export default function AdminRestaurants() {
         active: true,
     });
 
-    // Menu management
     const [selectedRestaurant, setSelectedRestaurant] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
     const [menuForm, setMenuForm] = useState({
@@ -27,8 +29,14 @@ export default function AdminRestaurants() {
     });
     const [editingMenuItemId, setEditingMenuItemId] = useState(null);
 
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+    const { showToast } = useToast();
+
     useEffect(() => {
         loadRestaurants();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     async function loadRestaurants() {
@@ -40,6 +48,7 @@ export default function AdminRestaurants() {
         } catch (err) {
             console.error(err);
             setError("Failed to load restaurants");
+            showToast("Failed to load restaurants", "error");
         } finally {
             setLoading(false);
         }
@@ -56,13 +65,15 @@ export default function AdminRestaurants() {
     async function handleRestaurantSubmit(e) {
         e.preventDefault();
         setError("");
-
         try {
             if (editingRestaurant) {
                 await restaurantApi.updateRestaurant(editingRestaurant.id, form);
+                showToast("Restaurant updated");
             } else {
                 await restaurantApi.createRestaurant(form);
+                showToast("Restaurant created");
             }
+
             setForm({
                 name: "",
                 address: "",
@@ -76,6 +87,7 @@ export default function AdminRestaurants() {
         } catch (err) {
             console.error(err);
             setError("Failed to save restaurant");
+            showToast("Failed to save restaurant", "error");
         }
     }
 
@@ -91,18 +103,26 @@ export default function AdminRestaurants() {
         });
     }
 
-    async function handleDeleteRestaurant(id) {
-        if (!window.confirm("Delete this restaurant?")) return;
+    function askDeleteRestaurant(id) {
+        setPendingDeleteId(id);
+        setConfirmOpen(true);
+    }
+
+    async function confirmDeleteRestaurant() {
+        if (!pendingDeleteId) return;
         try {
-            await restaurantApi.deleteRestaurant(id);
+            await restaurantApi.deleteRestaurant(pendingDeleteId);
+            showToast("Restaurant deleted");
             await loadRestaurants();
         } catch (err) {
             console.error(err);
             setError("Failed to delete restaurant");
+            showToast("Failed to delete restaurant", "error");
+        } finally {
+            setPendingDeleteId(null);
+            setConfirmOpen(false);
         }
     }
-
-    // ===== Menu management =====
 
     async function handleManageMenu(r) {
         setSelectedRestaurant(r);
@@ -123,6 +143,7 @@ export default function AdminRestaurants() {
         } catch (err) {
             console.error(err);
             setError("Failed to load menu");
+            showToast("Failed to load menu", "error");
         }
     }
 
@@ -137,7 +158,6 @@ export default function AdminRestaurants() {
     async function handleMenuSubmit(e) {
         e.preventDefault();
         if (!selectedRestaurant) return;
-
         try {
             const payload = {
                 itemName: menuForm.itemName,
@@ -147,13 +167,11 @@ export default function AdminRestaurants() {
             };
 
             if (editingMenuItemId) {
-                await restaurantApi.updateMenuItem(
-                    selectedRestaurant.id,
-                    editingMenuItemId,
-                    payload
-                );
+                await restaurantApi.updateMenuItem(selectedRestaurant.id, editingMenuItemId, payload);
+                showToast("Menu item updated");
             } else {
                 await restaurantApi.addMenuItem(selectedRestaurant.id, payload);
+                showToast("Menu item added");
             }
 
             setMenuForm({
@@ -167,6 +185,32 @@ export default function AdminRestaurants() {
         } catch (err) {
             console.error(err);
             setError("Failed to save menu item");
+            showToast("Failed to save menu item", "error");
+        }
+    }
+
+    function askDeleteMenuItem(itemId) {
+        setPendingDeleteId(itemId);
+        setConfirmOpen(true);
+    }
+
+    async function confirmDeleteMenuItem() {
+        if (!selectedRestaurant || !pendingDeleteId) {
+            setConfirmOpen(false);
+            setPendingDeleteId(null);
+            return;
+        }
+        try {
+            await restaurantApi.deleteMenuItem(selectedRestaurant.id, pendingDeleteId);
+            showToast("Menu item deleted");
+            await loadMenu(selectedRestaurant.id);
+        } catch (err) {
+            console.error(err);
+            setError("Failed to delete menu item");
+            showToast("Failed to delete menu item", "error");
+        } finally {
+            setPendingDeleteId(null);
+            setConfirmOpen(false);
         }
     }
 
@@ -180,294 +224,240 @@ export default function AdminRestaurants() {
         });
     }
 
-    async function handleDeleteMenuItem(itemId) {
-        if (!selectedRestaurant) return;
-        if (!window.confirm("Delete this menu item?")) return;
-        try {
-            await restaurantApi.deleteMenuItem(selectedRestaurant.id, itemId);
-            await loadMenu(selectedRestaurant.id);
-        } catch (err) {
-            console.error(err);
-            setError("Failed to delete menu item");
-        }
-    }
-
     return (
-        <div className="p-6 max-w-6xl mx-auto">
-            <h2 className="text-2xl font-semibold mb-4">Admin - Restaurants & Menu</h2>
+        <AdminLayout>
+            <div className="max-w-7xl mx-auto mt-10 space-y-8 p-6">
+                <h2 className="text-3xl font-semibold text-gray-800">Admin: Restaurant Management</h2>
 
-            {error && <p className="text-red-600 mb-3">{error}</p>}
+                {error && <p className="text-red-600 text-sm">{error}</p>}
 
-            {/* Restaurant Form */}
-            <div className="bg-white rounded-xl shadow border p-4 mb-6">
-                <h3 className="text-xl font-semibold mb-3">
-                    {editingRestaurant ? "Edit Restaurant" : "Create Restaurant"}
-                </h3>
-                <form className="grid md:grid-cols-2 gap-4" onSubmit={handleRestaurantSubmit}>
-                    <div>
-                        <label className="block text-sm mb-1">Name</label>
-                        <input
-                            name="name"
-                            value={form.name}
-                            onChange={handleRestaurantInputChange}
-                            required
-                            className="w-full border rounded px-3 py-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm mb-1">Address</label>
-                        <input
-                            name="address"
-                            value={form.address}
-                            onChange={handleRestaurantInputChange}
-                            required
-                            className="w-full border rounded px-3 py-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm mb-1">City</label>
-                        <input
-                            name="city"
-                            value={form.city}
-                            onChange={handleRestaurantInputChange}
-                            className="w-full border rounded px-3 py-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm mb-1">Cuisine Type</label>
-                        <input
-                            name="cuisineType"
-                            value={form.cuisineType}
-                            onChange={handleRestaurantInputChange}
-                            className="w-full border rounded px-3 py-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm mb-1">Contact Number</label>
-                        <input
-                            name="contactNumber"
-                            value={form.contactNumber}
-                            onChange={handleRestaurantInputChange}
-                            className="w-full border rounded px-3 py-2"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            name="active"
-                            checked={form.active}
-                            onChange={handleRestaurantInputChange}
-                        />
-                        <span>Active</span>
-                    </div>
-                    <div className="md:col-span-2 flex justify-end gap-2">
-                        {editingRestaurant && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setEditingRestaurant(null);
-                                    setForm({
-                                        name: "",
-                                        address: "",
-                                        city: "",
-                                        cuisineType: "",
-                                        contactNumber: "",
-                                        active: true,
-                                    });
-                                }}
-                                className="bg-gray-200 px-4 py-2 rounded"
-                            >
-                                Cancel
-                            </button>
-                        )}
-                        <button
-                            type="submit"
-                            className="bg-blue-600 text-white px-4 py-2 rounded"
-                        >
-                            {editingRestaurant ? "Update" : "Create"}
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            {/* Restaurant List */}
-            <div className="bg-white rounded-xl shadow border p-4 mb-6">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-xl font-semibold">Restaurants</h3>
-                    {loading && <span className="text-sm text-gray-500">Loading...</span>}
-                </div>
-                <table className="w-full text-sm">
-                    <thead>
-                    <tr className="border-b">
-                        <th className="py-2 text-left">ID</th>
-                        <th className="py-2 text-left">Name</th>
-                        <th className="py-2 text-left">City</th>
-                        <th className="py-2 text-left">Cuisine</th>
-                        <th className="py-2 text-left">Active</th>
-                        <th className="py-2 text-right">Actions</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {restaurants.map((r) => (
-                        <tr key={r.id} className="border-b">
-                            <td className="py-2">{r.id}</td>
-                            <td className="py-2">{r.name}</td>
-                            <td className="py-2">{r.city}</td>
-                            <td className="py-2">{r.cuisineType}</td>
-                            <td className="py-2">{r.active ? "Yes" : "No"}</td>
-                            <td className="py-2 text-right space-x-2">
-                                <button
-                                    onClick={() => handleEditRestaurant(r)}
-                                    className="text-blue-600 hover:underline"
-                                >
-                                    Edit
-                                </button>
-                                <button
-                                    onClick={() => handleManageMenu(r)}
-                                    className="text-green-600 hover:underline"
-                                >
-                                    Menu
-                                </button>
-                                <button
-                                    onClick={() => handleDeleteRestaurant(r.id)}
-                                    className="text-red-600 hover:underline"
-                                >
-                                    Delete
-                                </button>
-                            </td>
-                        </tr>
-                    ))}
-                    {restaurants.length === 0 && !loading && (
-                        <tr>
-                            <td className="py-3 text-center text-gray-500" colSpan={6}>
-                                No restaurants found.
-                            </td>
-                        </tr>
-                    )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Menu Management */}
-            {selectedRestaurant && (
-                <div className="bg-white rounded-xl shadow border p-4">
-                    <h3 className="text-xl font-semibold mb-2">
-                        Menu for {selectedRestaurant.name}
+                {/* RESTAURANT FORM CARD */}
+                <div className="bg-white shadow border rounded-xl p-6">
+                    <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                        {editingRestaurant ? "Edit Restaurant" : "Create Restaurant"}
                     </h3>
 
-                    <form className="grid md:grid-cols-2 gap-4 mb-4" onSubmit={handleMenuSubmit}>
-                        <div>
-                            <label className="block text-sm mb-1">Item Name</label>
-                            <input
-                                name="itemName"
-                                value={menuForm.itemName}
-                                onChange={handleMenuInputChange}
-                                required
-                                className="w-full border rounded px-3 py-2"
-                            />
+                    <form className="grid md:grid-cols-2 gap-4" onSubmit={handleRestaurantSubmit}>
+                        {[
+                            { label: "Name", name: "name" },
+                            { label: "Address", name: "address" },
+                            { label: "City", name: "city" },
+                            { label: "Cuisine Type", name: "cuisineType" },
+                            { label: "Contact Number", name: "contactNumber" },
+                        ].map((field) => (
+                            <div key={field.name}>
+                                <label className="text-sm text-gray-600">{field.label}</label>
+                                <input
+                                    name={field.name}
+                                    value={form[field.name]}
+                                    onChange={handleRestaurantInputChange}
+                                    required={field.name === "name" || field.name === "address"}
+                                    className="w-full border rounded-lg px-3 py-2 mt-1"
+                                />
+                            </div>
+                        ))}
+
+                        {/* Active Checkbox */}
+                        <div className="flex items-center gap-2 mt-3">
+                            <input type="checkbox" name="active" checked={form.active} onChange={handleRestaurantInputChange} className="w-4 h-4" />
+                            <span>Active</span>
                         </div>
-                        <div>
-                            <label className="block text-sm mb-1">Price</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                name="price"
-                                value={menuForm.price}
-                                onChange={handleMenuInputChange}
-                                required
-                                className="w-full border rounded px-3 py-2"
-                            />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-sm mb-1">Description</label>
-                            <textarea
-                                name="description"
-                                value={menuForm.description}
-                                onChange={handleMenuInputChange}
-                                rows={2}
-                                className="w-full border rounded px-3 py-2"
-                            />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                name="available"
-                                checked={menuForm.available}
-                                onChange={handleMenuInputChange}
-                            />
-                            <span>Available</span>
-                        </div>
-                        <div className="md:col-span-2 flex justify-end gap-2">
-                            {editingMenuItemId && (
+
+                        {/* Buttons */}
+                        <div className="md:col-span-2 flex justify-end gap-3 mt-4">
+                            {editingRestaurant && (
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setEditingMenuItemId(null);
-                                        setMenuForm({
-                                            itemName: "",
-                                            price: "",
-                                            description: "",
-                                            available: true,
+                                        setEditingRestaurant(null);
+                                        setForm({
+                                            name: "",
+                                            address: "",
+                                            city: "",
+                                            cuisineType: "",
+                                            contactNumber: "",
+                                            active: true,
                                         });
                                     }}
-                                    className="bg-gray-200 px-4 py-2 rounded"
+                                    className="px-4 py-2 bg-gray-200 rounded-lg"
                                 >
                                     Cancel
                                 </button>
                             )}
-                            <button
-                                type="submit"
-                                className="bg-green-600 text-white px-4 py-2 rounded"
-                            >
-                                {editingMenuItemId ? "Update Item" : "Add Item"}
+
+                            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg">
+                                {editingRestaurant ? "Update" : "Create"}
                             </button>
                         </div>
                     </form>
-
-                    <table className="w-full text-sm">
-                        <thead>
-                        <tr className="border-b">
-                            <th className="py-2 text-left">ID</th>
-                            <th className="py-2 text-left">Name</th>
-                            <th className="py-2 text-left">Price</th>
-                            <th className="py-2 text-left">Available</th>
-                            <th className="py-2 text-right">Actions</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {menuItems.map((m) => (
-                            <tr key={m.id} className="border-b">
-                                <td className="py-2">{m.id}</td>
-                                <td className="py-2">{m.itemName}</td>
-                                <td className="py-2">₹{m.price}</td>
-                                <td className="py-2">{m.available ? "Yes" : "No"}</td>
-                                <td className="py-2 text-right space-x-2">
-                                    <button
-                                        onClick={() => handleEditMenuItem(m)}
-                                        className="text-blue-600 hover:underline"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDeleteMenuItem(m.id)}
-                                        className="text-red-600 hover:underline"
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                        {menuItems.length === 0 && (
-                            <tr>
-                                <td className="py-3 text-center text-gray-500" colSpan={5}>
-                                    No menu items found.
-                                </td>
-                            </tr>
-                        )}
-                        </tbody>
-                    </table>
                 </div>
-            )}
-        </div>
+
+                {/* RESTAURANT TABLE */}
+                <div className="bg-white shadow border rounded-xl p-6">
+                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Restaurant List</h3>
+
+                    {!loading ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-sm">
+                                <thead className="bg-gray-100">
+                                <tr>
+                                    {["ID", "Name", "City", "Cuisine", "Active", "Actions"].map((h) => (
+                                        <th key={h} className="p-3 text-left border-b">
+                                            {h}
+                                        </th>
+                                    ))}
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                {restaurants.map((r, index) => (
+                                    <tr key={r.id} className={`border-b ${index % 2 === 0 ? "bg-gray-50" : "bg-white"}`}>
+                                        <td className="p-3">{r.id}</td>
+                                        <td className="p-3">{r.name}</td>
+                                        <td className="p-3">{r.city}</td>
+                                        <td className="p-3">{r.cuisineType}</td>
+                                        <td className="p-3">{r.active ? "Yes" : "No"}</td>
+
+                                        <td className="p-3 text-right space-x-3">
+                                            <button onClick={() => handleEditRestaurant(r)} className="text-blue-600 hover:underline">
+                                                Edit
+                                            </button>
+                                            <button onClick={() => handleManageMenu(r)} className="text-green-600 hover:underline">
+                                                Menu
+                                            </button>
+                                            <button onClick={() => askDeleteRestaurant(r.id)} className="text-red-600 hover:underline">
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+
+                                {restaurants.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="text-center py-4 text-gray-500">
+                                            No restaurants available
+                                        </td>
+                                    </tr>
+                                )}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <p className="text-gray-500">Loading...</p>
+                    )}
+                </div>
+
+                {/* MENU MANAGEMENT */}
+                {selectedRestaurant && (
+                    <div className="bg-white shadow border rounded-xl p-6">
+                        <h3 className="text-xl font-semibold mb-4">Menu for {selectedRestaurant.name}</h3>
+
+                        {/* Menu Form */}
+                        <form className="grid md:grid-cols-2 gap-4 mb-5" onSubmit={handleMenuSubmit}>
+                            <div>
+                                <label className="text-sm text-gray-600">Item Name</label>
+                                <input name="itemName" value={menuForm.itemName} onChange={handleMenuInputChange} required className="w-full border rounded-lg px-3 py-2 mt-1" />
+                            </div>
+
+                            <div>
+                                <label className="text-sm text-gray-600">Price</label>
+                                <input type="number" step="0.01" name="price" value={menuForm.price} onChange={handleMenuInputChange} required className="w-full border rounded-lg px-3 py-2 mt-1" />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label className="text-sm text-gray-600">Description</label>
+                                <textarea name="description" value={menuForm.description} onChange={handleMenuInputChange} rows={2} className="w-full border rounded-lg px-3 py-2 mt-1" />
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <input type="checkbox" name="available" checked={menuForm.available} onChange={handleMenuInputChange} />
+                                <span>Available</span>
+                            </div>
+
+                            <div className="md:col-span-2 flex justify-end gap-3 mt-3">
+                                {editingMenuItemId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingMenuItemId(null);
+                                            setMenuForm({ itemName: "", price: "", description: "", available: true });
+                                        }}
+                                        className="px-4 py-2 bg-gray-200 rounded-lg"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+
+                                <button className="px-4 py-2 bg-green-600 text-white rounded-lg">
+                                    {editingMenuItemId ? "Update Item" : "Add Item"}
+                                </button>
+                            </div>
+                        </form>
+
+                        {/* Menu Table */}
+                        <table className="w-full text-sm border-collapse">
+                            <thead className="bg-gray-100">
+                            <tr>
+                                {["ID", "Name", "Price", "Available", "Actions"].map((h) => (
+                                    <th key={h} className="p-3 text-left border-b">
+                                        {h}
+                                    </th>
+                                ))}
+                            </tr>
+                            </thead>
+
+                            <tbody>
+                            {menuItems.map((m, index) => (
+                                <tr key={m.id} className={`border-b ${index % 2 === 0 ? "bg-gray-50" : "bg-white"}`}>
+                                    <td className="p-3">{m.id}</td>
+                                    <td className="p-3">{m.itemName}</td>
+                                    <td className="p-3">₹{m.price}</td>
+                                    <td className="p-3">{m.available ? "Yes" : "No"}</td>
+
+                                    <td className="p-3 text-right space-x-3">
+                                        <button onClick={() => handleEditMenuItem(m)} className="text-blue-600 hover:underline">
+                                            Edit
+                                        </button>
+                                        <button onClick={() => askDeleteMenuItem(m.id)} className="text-red-600 hover:underline">
+                                            Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+
+                            {menuItems.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="text-center py-4 text-gray-500">
+                                        No menu items available
+                                    </td>
+                                </tr>
+                            )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* Confirm modal (shared) */}
+                <Modal
+                    open={confirmOpen}
+                    title="Confirm delete"
+                    message="Are you sure? This action cannot be undone."
+                    onCancel={() => {
+                        setConfirmOpen(false);
+                        setPendingDeleteId(null);
+                    }}
+                    onConfirm={async () => {
+                        // Determine whether pendingDeleteId maps to a menu item or restaurant depending on context
+                        if (selectedRestaurant && menuItems.some((mi) => mi.id === pendingDeleteId)) {
+                            await confirmDeleteMenuItem();
+                        } else {
+                            await confirmDeleteRestaurant();
+                        }
+                    }}
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                />
+            </div>
+        </AdminLayout>
     );
 }

@@ -7,86 +7,104 @@ export default function OrderStatus() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
-    async function handleCheckStatus(e) {
+    const handleSearch = async (e) => {
         e.preventDefault();
-        setError("");
-        setOrder(null);
-        if (!orderId) return;
+        if (!orderId.trim()) return;
 
         setLoading(true);
+        setError("");
+        setOrder(null);
+
         try {
             const res = await orderApi.getOrder(orderId);
             setOrder(res.data);
         } catch (err) {
-            console.error("Failed to fetch order", err);
-            setError("Order not found or server error.");
+            setError("Order not found. Double-check the ID.");
         } finally {
             setLoading(false);
         }
-    }
+    };
 
     return (
-        <div className="p-6 max-w-3xl mx-auto">
-            <h2 className="text-2xl font-semibold mb-4">Order Status</h2>
+        <div className="max-w-4xl mx-auto mt-8">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+                Track Your Order
+            </h2>
 
-            <form onSubmit={handleCheckStatus} className="flex gap-2 mb-4">
+            {/* Search Bar */}
+            <form
+                onSubmit={handleSearch}
+                className="bg-white shadow-md border rounded-xl p-5 flex gap-3"
+            >
                 <input
-                    type="number"
-                    placeholder="Enter Order ID"
+                    type="text"
                     value={orderId}
                     onChange={(e) => setOrderId(e.target.value)}
-                    className="border rounded px-3 py-2 flex-1"
+                    placeholder="Enter Order ID"
+                    className="flex-1 border rounded-lg px-3 py-2"
                 />
+
                 <button
-                    type="submit"
-                    className="bg-blue-600 text-white px-4 py-2 rounded"
+                    disabled={loading}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 >
-                    Check
+                    {loading ? "Searching..." : "Check"}
                 </button>
             </form>
 
-            {loading && <p>Loading...</p>}
-            {error && <p className="text-red-600">{error}</p>}
+            {error && (
+                <p className="text-red-600 text-sm mt-3 bg-red-50 border p-2 rounded-lg">
+                    {error}
+                </p>
+            )}
 
+            {/* Order Details */}
             {order && (
-                <div className="bg-white rounded-xl shadow border p-4 mt-4">
-                    <p className="mb-1">
-                        <span className="font-semibold">Order ID:</span> #{order.id}
-                    </p>
-                    <p className="mb-1">
-                        <span className="font-semibold">Restaurant ID:</span>{" "}
-                        {order.restaurantId}
-                    </p>
-                    <p className="mb-1">
-                        <span className="font-semibold">Customer:</span> {order.customerName}
-                    </p>
-                    <p className="mb-1">
-                        <span className="font-semibold">Phone:</span> {order.customerPhone}
-                    </p>
-                    <p className="mb-1">
-                        <span className="font-semibold">Address:</span>{" "}
-                        {order.deliveryAddress}
-                    </p>
-                    <p className="mb-3">
-                        <span className="font-semibold">Status:</span>{" "}
-                        <span className="uppercase text-blue-700">{order.status}</span>
-                    </p>
+                <div className="mt-6 bg-white shadow-md rounded-xl border p-6">
+                    <h3 className="text-xl font-semibold text-gray-700 mb-3">
+                        Order #{order.id}
+                    </h3>
 
-                    <h3 className="font-semibold mb-2">Items</h3>
+                    <div className="text-sm text-gray-700 space-y-1">
+                        <p><strong>Customer:</strong> {order.customerName}</p>
+                        <p><strong>Phone:</strong> {order.customerPhone}</p>
+                        <p><strong>Restaurant ID:</strong> {order.restaurantId}</p>
+                        <p><strong>Address:</strong> {order.deliveryAddress}</p>
+
+                        <p>
+                            <strong>Status:</strong>{" "}
+                            <span
+                                className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                    order.status === "DELIVERED"
+                                        ? "bg-green-100 text-green-700"
+                                        : order.status === "CANCELLED"
+                                            ? "bg-red-100 text-red-700"
+                                            : "bg-yellow-100 text-yellow-800"
+                                }`}
+                            >
+                {order.status}
+              </span>
+                        </p>
+                    </div>
+
+                    {/* Items */}
+                    <h4 className="text-lg font-semibold mt-4 mb-2">Items</h4>
+
                     <ul className="divide-y text-sm">
-                        {order.items?.map((item) => (
-                            <li key={item.id} className="flex justify-between py-1">
-                <span>
-                  {item.itemName} × {item.quantity}
-                </span>
-                                <span>₹{item.subTotal}</span>
+                        {order.items?.map((it) => (
+                            <li key={it.id} className="flex justify-between py-2">
+                                <span>{it.itemName} × {it.quantity}</span>
+                                <span className="font-medium">₹{it.subTotal}</span>
                             </li>
                         ))}
                     </ul>
 
-                    <p className="mt-3 font-semibold">
-                        Total: ₹{order.totalAmount}
-                    </p>
+                    <div className="flex justify-between items-center mt-4 border-t pt-3">
+                        <strong>Total</strong>
+                        <span className="text-xl font-bold text-blue-700">
+              ₹{order.totalAmount}
+            </span>
+                    </div>
                 </div>
             )}
         </div>

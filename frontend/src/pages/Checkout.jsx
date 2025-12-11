@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { orderApi } from "../api/orderApi";
-import { useNavigate } from "react-router-dom";
 
 export default function Checkout() {
     const { restaurant, items, clearCart } = useCart();
@@ -15,21 +15,25 @@ export default function Checkout() {
     const [error, setError] = useState("");
 
     const total = items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
+        (sum, item) => sum + Number(item.price) * Number(item.quantity),
         0
     );
 
     if (!restaurant || items.length === 0) {
         return (
-            <div className="p-6 max-w-3xl mx-auto">
-                <h2 className="text-2xl font-semibold mb-4">Checkout</h2>
-                <p className="text-gray-600 mb-4">Your cart is empty.</p>
-                <button
-                    onClick={() => navigate("/")}
-                    className="bg-blue-600 text-white px-4 py-2 rounded"
-                >
-                    Browse Restaurants
-                </button>
+            <div className="min-h-[60vh] flex items-start justify-center py-12">
+                <div className="max-w-2xl w-full bg-white rounded-lg shadow p-6">
+                    <h2 className="text-2xl font-semibold mb-3">Checkout</h2>
+                    <p className="text-gray-600 mb-4">Your cart is empty.</p>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => navigate("/")}
+                            className="px-4 py-2 rounded bg-blue-600 text-white"
+                        >
+                            Browse Restaurants
+                        </button>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -38,6 +42,13 @@ export default function Checkout() {
         e.preventDefault();
         setError("");
         setLoading(true);
+
+        // Basic front-end validation
+        if (!customerName || !customerPhone || !deliveryAddress) {
+            setError("Please fill all the customer details.");
+            setLoading(false);
+            return;
+        }
 
         try {
             const payload = {
@@ -55,16 +66,20 @@ export default function Checkout() {
             setOrderResponse(res.data);
             clearCart();
         } catch (err) {
-            console.error("Failed to create order", err);
-            if (err.response && err.response.data) {
-                console.log("Backend error response:", err.response.data);
-                const backendMessage =
-                    err.response.data.message ||
-                    err.response.data.error ||
-                    JSON.stringify(err.response.data);
-                setError(backendMessage);
+            // Read backend error message if present
+            if (err?.response?.data) {
+                const backend = err.response.data;
+                // backend might return different shapes; try to show meaningful message
+                if (backend.message) setError(backend.message);
+                else if (backend.errors) {
+                    // join validation errors
+                    const list = Object.entries(backend.errors)
+                        .map(([k, v]) => `${k}: ${v}`)
+                        .join(" • ");
+                    setError(list);
+                } else setError(JSON.stringify(backend));
             } else {
-                setError("Network error while creating order.");
+                setError("Network error — failed to place order. Check server logs.");
             }
         } finally {
             setLoading(false);
@@ -73,112 +88,139 @@ export default function Checkout() {
 
     if (orderResponse) {
         return (
-            <div className="p-6 max-w-3xl mx-auto">
-                <h2 className="text-2xl font-semibold mb-4">Order Placed Successfully!</h2>
-                <p className="mb-2">Your Order ID is: </p>
-                <p className="text-2xl font-bold text-green-700 mb-4">
-                    #{orderResponse.id}
-                </p>
+            <div className="min-h-[60vh] flex items-start justify-center py-12">
+                <div className="max-w-2xl w-full bg-white rounded-lg shadow p-6">
+                    <h2 className="text-2xl font-semibold mb-3">Order Placed</h2>
+                    <p className="text-gray-700 mb-4">
+                        Your order was placed successfully.
+                    </p>
 
-                <button
-                    onClick={() => navigate("/order-status")}
-                    className="bg-blue-600 text-white px-4 py-2 rounded mr-2"
-                >
-                    Go to Order Status
-                </button>
-                <button
-                    onClick={() => navigate("/")}
-                    className="bg-gray-200 px-4 py-2 rounded"
-                >
-                    Back to Home
-                </button>
+                    <div className="bg-gray-50 border rounded p-4 mb-4">
+                        <p className="text-gray-600">Order ID</p>
+                        <p className="text-xl font-semibold">#{orderResponse.id}</p>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => navigate("/order-status")}
+                            className="px-4 py-2 rounded bg-blue-600 text-white"
+                        >
+                            Track Order
+                        </button>
+                        <button
+                            onClick={() => navigate("/")}
+                            className="px-4 py-2 rounded border"
+                        >
+                            Back to Home
+                        </button>
+                    </div>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="p-6 max-w-4xl mx-auto">
-            <h2 className="text-2xl font-semibold mb-4">Checkout</h2>
+        <div className="min-h-[70vh] py-8">
+            <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Order summary */}
+                <aside className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold mb-3">Order Summary</h3>
 
-            <div className="grid md:grid-cols-2 gap-6">
-                {/* Order Summary */}
-                <div className="bg-white rounded-xl shadow border p-4">
-                    <h3 className="text-xl font-semibold mb-2">
-                        Restaurant: {restaurant.name}
-                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Restaurant: <span className="font-medium">{restaurant.name}</span>
+                    </p>
+
                     <ul className="divide-y">
-                        {items.map((item) => (
-                            <li
-                                key={item.menuItemId}
-                                className="flex justify-between py-2 text-sm"
-                            >
-                <span>
-                  {item.itemName} × {item.quantity}
-                </span>
-                                <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+                        {items.map((it) => (
+                            <li key={it.menuItemId} className="py-3 flex justify-between">
+                                <div>
+                                    <div className="font-medium">{it.itemName}</div>
+                                    <div className="text-xs text-gray-500">
+                                        Qty: {it.quantity}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="font-medium">₹{(it.price * it.quantity).toFixed(2)}</div>
+                                </div>
                             </li>
                         ))}
                     </ul>
-                    <div className="mt-4 flex justify-between font-semibold">
-                        <span>Total</span>
-                        <span>₹{total.toFixed(2)}</span>
+
+                    <div className="mt-4 border-t pt-4 flex justify-between items-center">
+                        <div className="text-sm text-gray-600">Total</div>
+                        <div className="text-xl font-semibold">₹{total.toFixed(2)}</div>
                     </div>
-                </div>
+                </aside>
 
-                {/* Customer Form */}
-                <form
-                    onSubmit={handleSubmit}
-                    className="bg-white rounded-xl shadow border p-4 space-y-3"
-                >
-                    <h3 className="text-xl font-semibold mb-2">Customer Details</h3>
+                {/* Customer form */}
+                <section className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold mb-3">Customer Details</h3>
 
-                    <div>
-                        <label className="block text-sm mb-1">Name</label>
-                        <input
-                            type="text"
-                            required
-                            value={customerName}
-                            onChange={(e) => setCustomerName(e.target.value)}
-                            className="w-full border rounded px-3 py-2"
-                        />
-                    </div>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm text-gray-700 mb-1">Name</label>
+                            <input
+                                type="text"
+                                value={customerName}
+                                onChange={(e) => setCustomerName(e.target.value)}
+                                className="w-full border rounded px-3 py-2"
+                                placeholder="Full name"
+                                required
+                            />
+                        </div>
 
-                    <div>
-                        <label className="block text-sm mb-1">Phone</label>
-                        <input
-                            type="tel"
-                            required
-                            value={customerPhone}
-                            onChange={(e) => setCustomerPhone(e.target.value)}
-                            className="w-full border rounded px-3 py-2"
-                        />
-                    </div>
+                        <div>
+                            <label className="block text-sm text-gray-700 mb-1">Phone</label>
+                            <input
+                                type="tel"
+                                value={customerPhone}
+                                onChange={(e) => setCustomerPhone(e.target.value)}
+                                className="w-full border rounded px-3 py-2"
+                                placeholder="9876543210"
+                                required
+                            />
+                            <p className="text-xs text-gray-400 mt-1">
+                                Enter digits only (backend validation may apply).
+                            </p>
+                        </div>
 
-                    <div>
-                        <label className="block text-sm mb-1">Delivery Address</label>
-                        <textarea
-                            required
-                            value={deliveryAddress}
-                            onChange={(e) => setDeliveryAddress(e.target.value)}
-                            className="w-full border rounded px-3 py-2"
-                            rows={3}
-                        />
-                    </div>
+                        <div>
+                            <label className="block text-sm text-gray-700 mb-1">Delivery address</label>
+                            <textarea
+                                value={deliveryAddress}
+                                onChange={(e) => setDeliveryAddress(e.target.value)}
+                                className="w-full border rounded px-3 py-2"
+                                rows={4}
+                                placeholder="House / Street / Area"
+                                required
+                            />
+                        </div>
 
-                    {error && (
-                        <p className="text-red-600 text-sm">
-                            {error}
-                        </p>
-                    )}
+                        {error && (
+                            <div className="text-sm text-red-600 bg-red-50 border border-red-100 p-2 rounded">
+                                {error}
+                            </div>
+                        )}
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="bg-green-600 text-white px-4 py-2 rounded w-full mt-2 disabled:opacity-60"
-                    >
-                        {loading ? "Placing order..." : "Place Order"}
-                    </button>
-                </form>
+                        <div className="flex gap-2">
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="px-4 py-2 bg-blue-600 text-white rounded"
+                            >
+                                {loading ? "Placing order..." : `Place Order • ₹${total.toFixed(2)}`}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => navigate("/cart")}
+                                className="px-4 py-2 rounded border"
+                            >
+                                Back to Cart
+                            </button>
+                        </div>
+                    </form>
+                </section>
             </div>
         </div>
     );
